@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="kr">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="ie=edge">
+
+  <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/css/bootstrap.min.css"
+    integrity="sha384-Vkoo8x4CGsO3+Hhxv8T/Q5PaXtkKtu6ug5TOeNV6gBiFeWPGFN9MuhOf23Q9Ifjh" crossorigin="anonymous">
+  <title>Energy Consumption Prediction</title>
+
+  <style>
+    * {
+      font-size: 12px;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container-fluid p-5" id="app">
+    <div class="row">
+      <div class="col-2">
+        <h4>OO 공장 전력 사용량 예측</h4>
+      </div>
+      <div class="col-10">
+        <button type="button" class="btn btn-primary" @click="train()">에너지 사용량 예측</button>
+      </div>
+    </div>
+    <hr>
+    <div class="row">
+      <div class="col-2">
+        <div class="row">
+          <div class="col">
+            <table class="table table-sm table-hover">
+              <thead>
+                <tr>
+                  <th>선택</th>
+                  <th>특성</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(feature, i) in dataset.features">
+                  <td><input type="checkbox" @input="addTrainFeature(i)"></td>
+                  <td @click="getDataByFeature(i)" style="cursor: pointer;">{{ feature }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>        
+      </div>
+      <div class="col-10">
+        <div class="row">
+          <div class="col-3">
+            <div class="card">
+              <div class="card-body">
+                <table class="table">
+                  <tbody>
+                    <tr>
+                      <th>데이터 수</th>
+                      <td>{{ feature.stats.count }}</td>
+                    </tr>
+                    <tr>
+                      <th>최소값</th>
+                      <td>{{ feature.stats.min }}</td>
+                    </tr>
+                    <tr>
+                      <th>최대값</th>
+                      <td>{{ feature.stats.max }}</td>
+                    </tr>
+                    <tr>
+                      <th>평균값</th>
+                      <td>{{ feature.stats.mean }}</td>
+                    </tr>
+                    <tr>
+                      <th>표준편차</th>
+                      <td>{{ feature.stats.std }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+          <div class="col-3">
+            <div class="card">
+              <div class="card-body">
+                <div id="box"></div>
+              </div>
+            </div>
+          </div>
+          <div class="col-sm-3">
+            <div class="card">
+              <div class="card-body">
+                <div id="hist"></div>
+              </div>
+            </div>
+          </div>
+          <div class="col-sm-3">
+            <div class="card">
+              <div class="card-body">
+                <div id="scatter"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <hr>
+    <div class="row">
+      <div class="col-2">
+        <div class="card">
+          <div class="card-body">
+            <div id="feature_importances"></div>
+          </div>
+        </div>
+      </div>      
+      <div class="col-10">
+        <div class="card">
+          <div class="card-body">
+            <div id="line"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <hr>
+    <div class="row">
+      <div class="col-2">
+        <div class="card">
+          <div class="card-body">
+            <h5 class="text-center">절대값 평균 오차</h5>
+            <h1 id="mape" class="text-center display-1">{{ mape }}%</h1>
+          </div>
+        </div>
+      </div>
+      <div class="col-10">
+        <div class="card">
+          <div class="card-body">
+            <div id="pred"></div>
+          </div>
+        </div>
+      </div>
+    </div>    
+    <!-- <div class="row pt-2">      
+      <div class="col-sm-2">
+        <div style="overflow: scroll; height: 300px;">
+          <code v-for="(rmse, i) in model.eval_results">rmse: {{ rmse }}<br></code>
+        </div>
+      </div>      
+    </div> -->    
+  </div>
+
+
+  <script src="https://code.jquery.com/jquery-3.4.1.slim.min.js"
+    integrity="sha384-J6qa4849blE2+poT4WnyKhv5vZF5SrPo0iEjwBvKU7imGFAV0wwj1yYfoRSJoZ+n"
+    crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.0/dist/umd/popper.min.js"
+    integrity="sha384-Q6E9RHvbIyZFJoft+2mJbHaEWldlvI9IOYy5n3zV9zzTtmI3UksdQRVvoxMfooAo"
+    crossorigin="anonymous"></script>
+  <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/js/bootstrap.min.js"
+    integrity="sha384-wfSDF2E50Y2D1uUdj0O3uMBJnjuUD4Ih7YwaYd1iqfktj0Uod8GCExl3Og8ifwB6"
+    crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/vue"></script>
+  <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+  <script src='https://cdn.plot.ly/plotly-latest.min.js'></script>
+  <script src="//cdnjs.cloudflare.com/ajax/libs/socket.io/2.2.0/socket.io.js" integrity="sha256-yr4fRk/GU1ehYJPAs8P4JlTgu0Hdsp4ZKrx8bDEDC3I=" crossorigin="anonymous"></script>
+  <script src="https://rawgit.com/moment/moment/2.2.1/min/moment.min.js"></script>
+
+  <script>
+    const apiHost = 'http://localhost:5001';
+    let app = new Vue({
+      el: '#app',
+      data: {
+        dataset: {
+          target: [],
+          features: [],
+        },
+        trainset: {
+          featureNames: [],
+        },
+        mape: 0,
+        feature: {
+          name: null,
+          stats: {
+            count: 0,
+            min: 0,
+            max: 0,
+            mean: 0,
+            std: 0,
+          }
+        },
+        model: {
+          feature_importances: {},
+          eval_results: [],
+        }
+      },
+      watch: {
+
+      },
+      mounted() {
+        let socket = io();
+        socket.on('connect', () => {console.log('connected!');});
+        socket.on('eval', (msg) => {
+          this.model.eval_results.push(msg);
+        });
+        this.init();
+      },
+      methods: {
+        init() {
+          this.getTarget();
+          axios.get(`${apiHost}/features`)
+            .then(({ data }) => {
+              // console.log(data);
+              this.dataset.features = data;
+            });
+        },
+        getTarget(){
+          axios.get(`${apiHost}/target`)
+            .then(({data}) => {
+              // console.log(data);
+              this.dataset.target = data.y;
+            });
+        },
+        renderTarget(data){
+
+        },
+        getDataByFeature(idx) {
+          //console.log(idx);
+          axios.get(`${apiHost}/feature/${this.dataset.features[idx]}`)
+            .then(({ data }) => {
+              console.log(data);
+              this.plotLine(this.dataset.features[idx], data);
+              this.setStats(this.dataset.features[idx], data.stats);
+              this.plotBox(this.dataset.features[idx], data.values);
+              this.plotHist(this.dataset.features[idx], data.values);
+              this.plotScatter(this.dataset.features[idx], data.values);
+            });
+        },
+        addTrainFeature(idx){
+          let featureName = this.dataset.features[idx];
+          let _idx = this.trainset.featureNames.indexOf(featureName);
+          if(_idx > -1){
+            this.trainset.featureNames.splice(_idx, 1);
+          }else{
+            this.trainset.featureNames.push(featureName);
+          }
+        },
+        setStats(name, stats){
+          this.feature.stats.count = stats.count;
+          this.feature.stats.min = stats.min;
+          this.feature.stats.max = stats.max;
+          this.feature.stats.mean = stats.mean;
+          this.feature.stats.std = stats.std;
+        },
+        plotLine(name, data){
+          let dates = [];
+          data.dates.map(v => {
+            dates.push(moment(v).format('YYYY-MM-DD HH'));
+          });
+          let trace = {
+            x: dates,
+            y: data.values,
+            type: 'scatter',
+            mode: 'lines+markers',
+            name: '',
+            marker: {
+              size: 4,
+              line: {width: 1}
+            },
+          };
+          let layout = {
+            height: 200,
+            margin: {t: 10, b: 20, l: 60, r: 10},
+            font: {size: 11},
+            xaxis: {
+              title: name,
+            },
+          };
+          Plotly.newPlot('line', [trace], layout, {displayModeBar: false});
+        },
+        plotBox(name, data){
+          let trace = {
+            y: data,
+            type: 'box',
+            name: '',
+            marker: {
+              size: 1,
+              color: 'rgb(164, 194, 244)',
+              outliercolor: 'rgba(219, 64, 82, 0.6)',
+            },
+            line: {
+              width: 1,
+              outliercolor: 'rgba(219, 64, 82, 1.0)',
+              outlierwidth: 3
+            }
+          };
+          let layout = {
+            height: 200,
+            margin: {t: 10, b: 30, l: 80, r: 80},
+            font: {size: 11},
+            xaxis: {
+              title: name,
+            },
+          };
+          Plotly.newPlot('box', [trace], layout, {displayModeBar: false});
+        },
+        plotHist(name, data) {
+          let trace = {
+            x: data,
+            type: 'histogram',
+            marker: {
+              color: 'rgb(234, 153, 153)',
+            }
+          };
+          let layout = {
+            height: 200,
+            margin: {t: 10, b: 30, l: 20, r: 20},
+            font: {size: 11},
+            xaxis: {
+              title: name,
+            },
+          };
+          Plotly.newPlot('hist', [trace], layout, {displayModeBar: false});
+        },
+        plotScatter(name, data){
+          let trace = {
+            x: data,
+            y: this.dataset.target,
+            type: 'scatter',
+            mode: 'markers',
+            marker: {
+              size: 4,
+              color: 'rgb(142, 124, 195)',
+              // line: {width: 1}
+            },
+          };
+          let layout = {
+            height: 200,
+            margin: {t: 10, b: 30, l: 60, r: 10},
+            font: {size: 11},
+            xaxis: {
+              title: name,
+            },
+            yaxis: {
+              title: '전력 사용량',
+            }
+          };
+          Plotly.newPlot('scatter', [trace], layout, {displayModeBar: false});
+        },
+        plotPred(data){
+          let actual = {
+            name: '실측치',
+            type: 'bar',
+            x: data.date,
+            y: data.actual,
+            marker: {color: 'rgb(55, 83, 109)'},
+          };
+          let pred = {
+            name: '예측치',
+            type: 'bar',
+            x: data.date,
+            y: data.pred,
+            marker: {color: 'rgb(26, 118, 255)'},
+          };
+          let err = {
+            name: '오차',
+            type: 'scatter',
+            mode: 'lines+markers',
+            marker: {
+              color: 'red',
+              size: 4,
+              line: {width: 1}
+            },
+            x: data.date,
+            y: data.err,
+          };
+          layout = {
+            margin: {t: 20, b: 30},
+            height: 250,
+          };
+          Plotly.newPlot('pred', [actual, pred, err], layout, {displayModeBar: false});
+          this.mape = data.mape;
+        },
+        plotImportances(data){
+          let importances = {
+            type: 'pie',
+            values: data.importances,
+            labels: data.features,
+            hole: .4,
+          };
+          layout = {
+            title: '특성 중요도',
+            font: {size: 11},
+            height: 200,
+            margin: {t: 25, b: 10, l: 30, r: 0},
+          };
+          Plotly.newPlot('feature_importances', [importances], layout, {displayModeBar: false});
+        },
+        rendPlot(name, data){
+          // 함수 하나로 처리하도록
+        },
+        train(){
+          // console.log(this.trainset.featureNames);
+          axios.post(`${apiHost}/train`, this.trainset.featureNames)
+            .then(({data}) => {
+              // console.log(data);
+              this.plotPred(data);
+              this.plotImportances(data);
+            });
+        },
+      }
+
+    });
+  </script>
+</body>
+
+</html>
